@@ -1,40 +1,211 @@
-## ANOTATIONS - ANOTAÇÕES
-1. Anotações do Spring Web
-`@RequestMapping("/medicos")`
-=> Define que a classe está mapeada para a url[endpoint] /medicos.
+Caça aos Erros —
+Sistema Escolar de Cadastro
 
-`@RestController`
-=> Define que a classe é uma classe controladora no Spring.
+O objetivo foi identificar e corrigir erros intencionais em uma aplicação de gerenciamento escolar, garantindo o funcionamento correto dos endpoints de alunos, professores e matrículas.
 
-`@GetMapping` 
-=> Define que o método será somente leitura.
+Autor: Luccas Bentim
 
-`@PostMapping`
-=> Define que o método irá receber dados.
 
-`@PutMapping`
-=> Atualiza alguma informação.
+Tecnologias utilizadas:
 
-`@DeleteMapping`
-=> Deleta dados.
+Java 17,
+Spring Boot,
+Spring Web MVC,
+Spring Data JPA + Hibernate,
+Banco de dados H2 (em memória),
+Maven,
+Lombok,
+Postman (para testes manuais).
 
-`@ResquestBody`
-=> é utilizada quando você irá receber dados pelo simulador de requisição [insomnia], e informa que os dados serão enviados no corpo da requisição.
 
-`@Autowired`
-=> é utilizado quando você está aplicando a injeção de depêndencia. Ou seja, o Springboot sabe o que a classe(interface) possui de métodos e atributos.
+Erros identificados e corrigidos:
 
-`@Transactional`
-=> é utilizado para que o método consiga realizar algum tipo de modelagem(alteração) no BD.
+1. Falta de transação no cadastro de professor
+Arquivo: ProfessorController.java
 
-## RELACIONAMENTO ENTRE TABELAS NO SPRINGBOOT
-`@OneToOne` -> Um para um. (Uma consulta está ligada a um único médico).
-`@OneToMany` -> Um para muitos. (Um médico tem várias consultas).
-`@ManyToOne` -> Muitos para um. (Muitas consultas para um paciente).
-`@ManyToMany` -> Muitos para Muitos. (Muitos pacientes para muitos médicos).
+Problema: O método de cadastro não estava dentro de uma transação.
 
-`Chave Primária (PK)` -> é o atributo(campo) que identifica a tabela(objeto) no BD.
-`Chave Estrangeira (FK)` -> é o atributo PK que está mencionado em uma outra tabela, que por sua vez será uma chave estrangeira no BD.
+Código incorreto:
 
-OBS:
-1. Sempre defina o lado "dono" da `relação(@JoinColumn)` o lado que tem a `FK(chave estrangeira).`
+@PostMapping
+public void cadastrar(@RequestBody DadosCadastroProfessor dados) {
+    repository.save(new Professor(dados));
+}
+
+Correção:
+
+@PostMapping
+@Transactional
+public void cadastrar(@RequestBody DadosCadastroProfessor dados) {
+    repository.save(new Professor(dados));
+}
+
+Motivo: A anotação @Transactional garante que a operação de persistência seja executada corretamente dentro de uma transação.
+
+
+2. Entidade Aluno associada à tabela errada
+Arquivo: Aluno.java
+
+Problema: A entidade estava vinculada à tabela de professores.
+
+Código incorreto:
+
+@Table(name = "professores")
+
+Correção:
+
+@Table(name = "alunos")
+
+Motivo: Cada entidade deve estar associada à sua própria tabela, evitando conflitos entre dados de alunos e professores.
+
+
+3. Tipo incorreto no repositório de alunos
+Arquivo: AlunoRepository.java
+
+Problema: O repositório usava String como tipo de ID.
+
+Código incorreto:
+
+public interface AlunoRepository extends JpaRepository<Aluno, String> {
+}
+
+Correção:
+
+public interface AlunoRepository extends JpaRepository<Aluno, Integer> {
+}
+
+Motivo: O campo id da entidade Aluno é do tipo Integer. O repositório deve usar o mesmo tipo.
+
+
+4. Nome e e-mail invertidos na listagem de alunos
+Arquivo: DadosListagemAluno.java
+
+Problema: O DTO retornava nome e e-mail trocados.
+
+Código incorreto:
+
+this(
+    aluno.getId(),
+    aluno.getEmail(),
+    aluno.getNome(),
+    aluno.getRa(),
+    aluno.getCurso()
+);
+
+Correção:
+
+this(
+    aluno.getId(),
+    aluno.getNome(),
+    aluno.getEmail(),
+    aluno.getRa(),
+    aluno.getCurso()
+);
+
+Motivo: O endpoint retornava o e-mail no campo nome e o nome no campo email.
+
+
+5. Método HTTP incorreto na atualização de aluno
+Arquivo: AlunoController.java
+
+Problema: O método de atualização usava @PostMapping.
+
+Código incorreto:
+
+@PostMapping
+@Transactional
+public void atualizar(@RequestBody DadosAtualizacaoAluno dados) {
+    var aluno = repository.getReferenceById(dados.id());
+    aluno.atualizarInformacoes(dados);
+}
+
+Correção:
+
+@PutMapping
+@Transactional
+public void atualizar(@RequestBody DadosAtualizacaoAluno dados) {
+    var aluno = repository.getReferenceById(dados.id());
+    aluno.atualizarInformacoes(dados);
+}
+
+Motivo: O cadastro deve usar POST, enquanto a atualização deve usar PUT.
+
+
+6. Tipo incorreto no ID de exclusão de aluno
+Arquivo: AlunoController.java  
+Problema: O parâmetro do método de exclusão estava definido como String.
+
+Código incorreto:
+
+@DeleteMapping("/{id}")
+@Transactional
+public void excluir(@PathVariable String id) {
+    repository.deleteById(id);
+}
+
+Correção:
+
+@DeleteMapping("/{id}")
+@Transactional
+public void excluir(@PathVariable Integer id) {
+    repository.deleteById(id);
+}
+
+Motivo: O repositório de alunos utiliza identificadores do tipo Integer.
+
+
+7. Campo incorreto na atualização do professor
+Arquivo: Professor.java  
+Problema: O e-mail estava sendo atribuído ao campo nome.
+
+Código incorreto:
+
+if (dados.email() != null) {
+    this.nome = dados.email();
+}
+
+Correção:
+
+if (dados.email() != null) {
+    this.email = dados.email();
+}
+
+Motivo: O erro alterava o nome do professor e mantinha o e-mail antigo.
+
+
+8. Problemas no controller de matrículas
+Arquivo: MatriculaController.java
+
+Conversão incorreta do ID do aluno  
+Código incorreto:
+
+Aluno aluno = alunoRepository.getReferenceById(
+    dados.alunoId().toString()
+);
+
+Correção:
+
+Aluno aluno = alunoRepository.getReferenceById(
+    dados.alunoId()
+);
+
+Motivo: O AlunoRepository utiliza identificadores do tipo Integer.
+
+Nome incorreto no PathVariable  
+Código incorreto:
+
+@DeleteMapping("/{id}")
+@Transactional
+public void excluir(@PathVariable Integer ids) {
+    repository.deleteById(ids);
+}
+
+Correção:
+
+@DeleteMapping("/{id}")
+@Transactional
+public void excluir(@PathVariable Integer id) {
+    repository.deleteById(id);
+}
+
+Motivo: O nome do parâmetro deve corresponder ao valor informado na rota {id}.
